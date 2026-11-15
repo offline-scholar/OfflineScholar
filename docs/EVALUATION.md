@@ -162,3 +162,32 @@ Retrieval only (MiniLM, top_k 4, `OS_MIN_SCORE` 0.25), no LLM:
 
 The LLM part of this run (31 questions × 3 models) was stopped before it finished, so this set has no answer-quality
 numbers yet. Run `python scripts/benchmark_models.py` to produce them.
+
+## Prompt change after the evaluation: fewer refusals of partly covered topics (2026-10-31)
+
+The numbers above were measured with a prompt that told the model to reply `NOT_FOUND` whenever the passages
+mention a topic without fully answering the question. In use this refused questions on topics the notes only touch
+on (e.g. "What is overfitting?" on the MIT 6.867 lectures). The rule now asks the model to give what the passages do
+say, cite it, and add that the notes don't cover the rest; `NOT_FOUND` is for questions no passage is about. The
+answer-support guard (`OS_MIN_ANSWER_SUPPORT` 0.55) is unchanged and still rejects answers built from outside
+knowledge.
+
+Spot check on the 11 MIT 6.867 PDFs with qwen2.5:3b (9 questions, one run each, not a full re-evaluation):
+3/3 partly covered questions now answered (overfitting, VC dimension, kernel), 4/4 uncovered trap questions still
+refused (backpropagation, Baum-Welch, a Python question, World Cup), 2/2 covered questions answered. Trade-off: answers
+to partly covered topics can be thin; the VC-dimension answer quoted an exam problem instead of a definition because
+the notes contain no definition. The full benchmark should be re-run before publishing new accuracy figures.
+
+## Embeddings with ONNX Runtime instead of PyTorch (2026-11-15)
+
+On a Windows 11 PC with Smart App Control in enforce mode, PyTorch could not load (`torch\lib\shm.dll` blocked,
+WinError 4551), so every question, analysis and revision request failed while `/api/health` still said `ok`.
+Embeddings now run all-MiniLM-L6-v2 through ONNX Runtime (the official `onnx/model.onnx` export from the model's
+Hugging Face repo, revision `1110a243`), with the same tokenizer, 256-token limit, mean pooling and L2
+normalisation as Sentence Transformers. Sentence Transformers stays as a fallback when the ONNX file is absent.
+
+Checked against the vectors PyTorch had written into an existing index (11 MIT 6.867 PDFs): 120 of 120 chunks
+re-embedded with ONNX had cosine similarity 1.000000 with the stored vector (largest element difference 2.1e-7), and
+the same query returned the same passages with the same scores. Existing indexes therefore need no rebuild.
+Embedding 120 chunks took 5.6 s including model load on the CPU above. Load failures of either runtime now return
+`503 embedding_model_unavailable` with a fix, and `/api/health` reports `degraded` with the error.
