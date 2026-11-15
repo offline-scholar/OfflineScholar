@@ -16,6 +16,7 @@ import importlib
 import inspect
 import logging
 import threading
+from datetime import date
 from collections import OrderedDict
 from typing import Any, Callable
 
@@ -23,7 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .errors import AppError
-from .models import Document, QuizAttempt, RevisionProgress
+from .models import Document, QuizAttempt, RevisionProgress, Subject
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,9 @@ def data_fingerprint(subject_id: int, db: Session) -> str:
         QuizAttempt.subject_id == subject_id).one()
     progress = db.query(func.count(RevisionProgress.id), func.coalesce(func.sum(RevisionProgress.minutes), 0),
                         func.max(RevisionProgress.done_at)).filter(RevisionProgress.subject_id == subject_id).one()
-    raw = repr((docs, tuple(quizzes), tuple(progress)))
+    subject = db.get(Subject, subject_id)
+    plan = (subject.exam_date, subject.minutes_per_day, today() if subject.exam_date else None) if subject else None
+    raw = repr((docs, tuple(quizzes), tuple(progress), plan))
     return hashlib.sha1(raw.encode()).hexdigest()
 
 
@@ -109,18 +112,48 @@ def _cached(func_name: str, subject_id: int, db: Session) -> Any:
     return cache.get_or_compute(key, lambda: _call(func_name, subject_id, db))
 
 
-def _progress_kwargs(subject_id: int, db: Session) -> dict:
-    """Minutes studied per topic, for exam_engine versions whose recommend_revision accepts `progress`
-    ({"Topic": {"minutes_done": 30}}, the format exam_engine.revision_engine already understands)."""
+DEFAULT_PLAN_DAYS = 7
+DEFAULT_MINUTES_PER_DAY = 90
+MAX_PLAN_DAYS = 30
+
+
+def today() -> date:
+    return date.today()  # local date: "days until the exam" is what the student sees on their calendar
+
+
+def plan_settings(subject: Subject | None) -> dict:
+    """How long and how intense the revision plan is, from the subject's exam date and daily minutes."""
+    minutes = (subject.minutes_per_day if subject else None) or DEFAULT_MINUTES_PER_DAY
+    exam = subject.exam_date if subject else None
+    days_until = (exam - today()).days if exam else None
+    if days_until is None or days_until < 1:
+        days = DEFAULT_PLAN_DAYS
+    else:
+        days = min(days_until, MAX_PLAN_DAYS)
+    return {"exam_date": exam.isoformat() if exam else None, "days_until_exam": days_until,
+            "days": days, "minutes_per_day": minutes,
+            "capped": bool(days_until and days_until > MAX_PLAN_DAYS),
+            "exam_passed": bool(days_until is not None and days_until < 1)}
+
+
+def _accepted(func_name: str, kwargs: dict) -> dict:
+    """Only the keyword arguments exam_engine.api.<func_name> accepts, so newer backend features (e.g. passing
+    `progress`) work with older and newer versions of Member 2's module."""
     try:
-        fn = importlib.import_module("exam_engine.api").recommend_revision
-        if "progress" not in inspect.signature(fn).parameters:
-            return {}
+        params = inspect.signature(getattr(importlib.import_module("exam_engine.api"), func_name)).parameters
     except (ImportError, AttributeError, TypeError, ValueError):
         return {}
+    if any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k in params}
+
+
+def _progress(subject_id: int, db: Session) -> dict:
+    """Minutes studied per topic in the format exam_engine.revision_engine understands:
+    {"Topic": {"minutes_done": 30}}."""
     from .routes.progress import minutes_by_topic
 
-    return {"progress": {t: {"minutes_done": m} for t, m in minutes_by_topic(db, subject_id).items()}}
+    return {t: {"minutes_done": m} for t, m in minutes_by_topic(db, subject_id).items()}
 
 
 def get_analysis(subject_id: int, db: Session) -> Any:
@@ -134,7 +167,18 @@ def get_revision(subject_id: int, db: Session) -> Any:
     key = ("recommend_revision", subject_id, data_fingerprint(subject_id, db))
     if _saved_revision_key.get(subject_id) != key:
         cache.invalidate(key)
-    result = cache.get_or_compute(key, lambda: _call("recommend_revision", subject_id, db, **_progress_kwargs(subject_id, db)))
+    settings = plan_settings(db.get(Subject, subject_id))
+
+    def compute():
+        kwargs = _accepted("recommend_revision", {"days": settings["days"],
+                                                  "minutes_per_day": settings["minutes_per_day"],
+                                                  "progress": _progress(subject_id, db)})
+        out = _call("recommend_revision", subject_id, db, **kwargs)
+        if isinstance(out, dict):
+            out["plan_settings"] = settings
+        return out
+
+    result = cache.get_or_compute(key, compute)
     _saved_revision_key[subject_id] = key
     return result
 

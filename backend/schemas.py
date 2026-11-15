@@ -1,7 +1,7 @@
 """Pydantic request/response models (the API contract)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -29,6 +29,14 @@ class SubjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
+    exam_date: date | None = None
+    minutes_per_day: int | None = None
+
+
+class SubjectUpdate(BaseModel):
+    """Only the fields you send are changed; send null to clear one."""
+    exam_date: date | None = None
+    minutes_per_day: int | None = Field(default=None, ge=15, le=600)
 
 
 class DocumentOut(BaseModel):

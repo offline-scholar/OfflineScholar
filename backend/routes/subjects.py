@@ -7,7 +7,7 @@ from ai_engine.runtime import get_services
 from backend.database import get_db
 from backend.errors import AppError
 from backend.models import Chunk, Document, Subject
-from backend.schemas import SubjectCreate, SubjectOut
+from backend.schemas import SubjectCreate, SubjectOut, SubjectUpdate
 from backend.storage import remove_file
 
 router = APIRouter(prefix="/subjects", tags=["subjects"])
@@ -24,6 +24,18 @@ def create_subject(body: SubjectCreate, db: Session = Depends(get_db)):
         raise AppError(409, "subject_exists", f"Subject '{body.name}' already exists.")
     subject = Subject(name=body.name)
     db.add(subject)
+    db.commit()
+    return subject
+
+
+@router.patch("/{subject_id}", response_model=SubjectOut)
+def update_subject(subject_id: int, body: SubjectUpdate, db: Session = Depends(get_db)):
+    """Set the exam date and/or daily study minutes that shape the revision plan."""
+    subject = db.get(Subject, subject_id)
+    if subject is None:
+        raise AppError(404, "subject_not_found", f"Subject {subject_id} not found")
+    for field in body.model_fields_set:
+        setattr(subject, field, getattr(body, field))
     db.commit()
     return subject
 

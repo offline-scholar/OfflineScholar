@@ -41,8 +41,9 @@ def has_column(conn: Connection, table: str, column: str) -> bool:
 
 
 def add_column(conn: Connection, table: str, column: str, ddl: str) -> None:
-    """ALTER TABLE ... ADD COLUMN, skipped if the column is already there. `ddl` e.g. "INTEGER NOT NULL DEFAULT 0"."""
-    if not has_column(conn, table, column):
+    """ALTER TABLE ... ADD COLUMN, skipped if the column is already there. `ddl` e.g. "INTEGER NOT NULL DEFAULT 0".
+    Also skipped when the table doesn't exist: create_all builds new tables with every current column."""
+    if inspect(conn).has_table(table) and not has_column(conn, table, column):
         conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{column}" {ddl}'))
 
 
@@ -51,6 +52,9 @@ def add_column(conn: Connection, table: str, column: str, ddl: str) -> None:
 MIGRATIONS: list[Migration] = [
     Migration(1, "quiz_attempts.title (quiz history shows the topic)",
               lambda c: add_column(c, "quiz_attempts", "title", "VARCHAR(200)")),
+    Migration(2, "subjects.exam_date and subjects.minutes_per_day (personalised revision plan)",
+              lambda c: (add_column(c, "subjects", "exam_date", "DATE"),
+                         add_column(c, "subjects", "minutes_per_day", "INTEGER"))),
 ]
 
 

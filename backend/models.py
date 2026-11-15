@@ -1,9 +1,9 @@
 """SQLAlchemy models. This schema is the shared contract with Member 2 (see docs/INTEGRATION.md)."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -20,6 +20,9 @@ class Subject(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Study-plan settings (migration 2): the revision plan runs from today to the exam at this daily time.
+    exam_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    minutes_per_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     documents: Mapped[list["Document"]] = relationship(back_populates="subject", cascade="all, delete-orphan")
 

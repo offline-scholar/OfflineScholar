@@ -87,10 +87,15 @@ def test_progress_reaches_the_engine_when_it_supports_it_and_refreshes_the_plan(
 
 
 def test_engine_without_progress_parameter_still_works(client, monkeypatch):
-    monkeypatch.setattr(exam_api, "recommend_revision", lambda subject_id, db, **kw: {"kwargs": sorted(kw)})
+    """Today's exam_engine.api.recommend_revision takes days and minutes_per_day but not progress."""
+    def current_engine(subject_id, db, days=7, minutes_per_day=90):
+        return {"days": days, "minutes_per_day": minutes_per_day}
+
+    monkeypatch.setattr(exam_api, "recommend_revision", current_engine)
     sid = _subject(client)
     client.put(f"/api/subjects/{sid}/progress", json={"day": 1, "topic": "SVM", "minutes": 40})
-    assert client.get(f"/api/revision/{sid}").json() == {"kwargs": []}
+    r = client.get(f"/api/revision/{sid}").json()
+    assert (r["days"], r["minutes_per_day"]) == (7, 90)
 
 
 def test_migration_1_adds_title_to_an_existing_database(tmp_path):
