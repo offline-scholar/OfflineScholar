@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 # one-time, needs internet: install Ollama (https://ollama.com; Windows: winget install Ollama.Ollama),
 # make sure it is running (Windows/macOS: the Ollama app; Linux: `ollama serve`), then:
-python scripts/download_models.py   # MiniLM embeddings (~90 MB) into data/models + qwen2.5:3b (~1.9 GB)
+python scripts/download_models.py   # MiniLM embeddings (ONNX, ~180 MB with fallback files) + qwen2.5:3b (~1.9 GB)
 
 cp .env.example .env                # set OS_OFFLINE=1 to forbid network use from now on
 uvicorn backend.main:app --port 8000
@@ -45,10 +45,15 @@ must be running. FastAPI also serves the built UI at http://localhost:8000 when 
 
 For UI development: run the backend on :8000, then `npm run dev` in `frontend/` (http://localhost:5173 proxies `/api`).
 
+**Windows Smart App Control.** If it is on, Windows blocks PyTorch's DLLs (`WinError 4551 ... Application Control
+policy has blocked this file`). The app doesn't need PyTorch: once `scripts/download_models.py` has saved
+`data/models/all-MiniLM-L6-v2/onnx/model.onnx`, embeddings run with ONNX Runtime (Microsoft-signed, allowed).
+`/api/health` shows the backend in use under `embeddings.backend` and any load error under `embeddings.error`.
+
 ## How it works
 
 PDF → PyMuPDF text per page (Tesseract OCR for image-only pages, and for slides whose text layer is just a title
-while the content is a picture) → sentence-aware chunks that never cross pages → MiniLM embeddings → FAISS (one
+while the content is a picture) → sentence-aware chunks that never cross pages → MiniLM embeddings (run with ONNX Runtime, no PyTorch) → FAISS (one
 index per subject; vector id = `chunks.id` in SQLite) → question embedding → top-k passages (below `OS_MIN_SCORE`
 they are discarded) → prompt to the Ollama model that must answer only from numbered passages and cite them, or say
 `NOT_FOUND`. If nothing relevant is retrieved the LLM isn't called; if the answer's words are mostly not in the

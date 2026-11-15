@@ -25,8 +25,9 @@ class Settings(BaseSettings):
     llm_num_ctx: int = 4096
     llm_max_tokens: int = 400  # caps answer length: ~15 tokens/s on a laptop CPU, so <= ~25 s of generation
 
-    # Embeddings. "hashing" is a dependency-free fallback intended for tests/CI only.
-    embedding_backend: Literal["sentence-transformers", "hashing"] = "sentence-transformers"
+    # "auto": ONNX Runtime when data/models/<model>/onnx/model.onnx exists (no PyTorch), else Sentence
+    # Transformers. "hashing" is a dependency-free fallback intended for tests/CI only.
+    embedding_backend: Literal["auto", "onnx", "sentence-transformers", "hashing"] = "auto"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     offline: bool = False  # True -> forbid HuggingFace network access
 

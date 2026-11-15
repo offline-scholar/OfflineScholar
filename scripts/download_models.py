@@ -2,7 +2,8 @@
 
     python scripts/download_models.py [--force]
 
-1. Saves the Sentence Transformers embedding model into data/models/ (skipped if already there).
+1. Saves the embedding model into data/models/ (skipped if already there): the ONNX file used at runtime
+   (no PyTorch needed) plus the Sentence Transformers files used as a fallback. Pinned to a known revision.
 2. Pulls the Ollama LLM through Ollama's HTTP API (Ollama must be running; the `ollama` CLI does not
    need to be on PATH, which matters on Windows right after installing it).
 """
@@ -19,17 +20,31 @@ import httpx  # noqa: E402
 from backend.config import get_settings  # noqa: E402
 
 
+# Revision of sentence-transformers/all-MiniLM-L6-v2 whose ONNX export was checked against the PyTorch model
+# (cosine 1.000000 on 120 lecture chunks, docs/EVALUATION.md). Pinning keeps every install identical.
+EMBEDDING_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+EMBEDDING_FILES = [
+    "onnx/model.onnx", "tokenizer.json", "tokenizer_config.json", "vocab.txt", "special_tokens_map.json",
+    "config.json", "modules.json", "sentence_bert_config.json", "config_sentence_transformers.json",
+    "1_Pooling/config.json", "model.safetensors",
+]
+
+
 def download_embedding_model(force: bool) -> None:
+    """Fetch the files with huggingface_hub (no PyTorch import, so this also works where it's blocked)."""
+    from huggingface_hub import hf_hub_download
+
     s = get_settings()
     target = s.models_dir / s.embedding_model.split("/")[-1]
-    if (target / "modules.json").is_file() and not force:
+    missing = [f for f in EMBEDDING_FILES if force or not (target / f).is_file()]
+    if not missing:
         print(f"[1/2] Embedding model already present: {target}")
         return
-    print(f"[1/2] Downloading embedding model {s.embedding_model} -> {target}")
-    from sentence_transformers import SentenceTransformer
-
-    s.models_dir.mkdir(parents=True, exist_ok=True)
-    SentenceTransformer(s.embedding_model, device="cpu").save(str(target))
+    print(f"[1/2] Downloading {len(missing)} embedding-model file(s) from {s.embedding_model} -> {target}")
+    revision = EMBEDDING_REVISION if s.embedding_model == "sentence-transformers/all-MiniLM-L6-v2" else None
+    for f in missing:
+        print(f"  {f}")
+        hf_hub_download(s.embedding_model, f, revision=revision, local_dir=target)
 
 
 def pull_ollama_model() -> int:

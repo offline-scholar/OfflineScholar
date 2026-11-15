@@ -177,3 +177,17 @@ Spot check on the 11 MIT 6.867 PDFs with qwen2.5:3b (9 questions, one run each, 
 refused (backpropagation, Baum-Welch, a Python question, World Cup), 2/2 covered questions answered. Trade-off: answers
 to partly covered topics can be thin; the VC-dimension answer quoted an exam problem instead of a definition because
 the notes contain no definition. The full benchmark should be re-run before publishing new accuracy figures.
+
+## Embeddings with ONNX Runtime instead of PyTorch (2026-11-15)
+
+On a Windows 11 PC with Smart App Control in enforce mode, PyTorch could not load (`torch\lib\shm.dll` blocked,
+WinError 4551), so every question, analysis and revision request failed while `/api/health` still said `ok`.
+Embeddings now run all-MiniLM-L6-v2 through ONNX Runtime (the official `onnx/model.onnx` export from the model's
+Hugging Face repo, revision `1110a243`), with the same tokenizer, 256-token limit, mean pooling and L2
+normalisation as Sentence Transformers. Sentence Transformers stays as a fallback when the ONNX file is absent.
+
+Checked against the vectors PyTorch had written into an existing index (11 MIT 6.867 PDFs): 120 of 120 chunks
+re-embedded with ONNX had cosine similarity 1.000000 with the stored vector (largest element difference 2.1e-7), and
+the same query returned the same passages with the same scores. Existing indexes therefore need no rebuild.
+Embedding 120 chunks took 5.6 s including model load on the CPU above. Load failures of either runtime now return
+`503 embedding_model_unavailable` with a fix, and `/api/health` reports `degraded` with the error.
