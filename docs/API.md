@@ -11,6 +11,7 @@ Base URL `http://localhost:8000/api` · interactive docs at `/docs` · errors ar
 | `DELETE /documents/{id}` | removes file, chunks and vectors (204) |
 | `GET/POST /subjects` · `DELETE /subjects/{id}` | manage subjects |
 | `PATCH /subjects/{id}` | `{exam_date?: "YYYY-MM-DD" or null, minutes_per_day?: 15–600 or null}`: only fields sent change. Shapes the revision plan: it runs from today to the exam (max 30 days, default 7 without a date) at that daily time (default 90). `/revision` returns these as `plan_settings: {exam_date, days_until_exam, days, minutes_per_day, capped, exam_passed}` |
+| `GET /profile` · `PATCH /profile` | the single local student profile `{name, quiz_length (1–20), show_sources}` (defaults Student, 5, true). PATCH changes only the fields sent; no login: one student per install |
 | `POST /chat/ask` | grounded Q&A (below) |
 | `POST /quiz/generate` | `{subject_id, topic, n_questions (1-20, default 5)}` → multiple-choice questions written by `exam_engine` from the subject's lecture notes, each with `source` document + page. Uses the local LLM (≈10–20 s per question on CPU), falls back to extractive questions; may return `questions: []` with a note |
 | `POST /quiz/submit` | `{subject_id, title?, answers:[{topic, correct, question_ref?}]}` → store a graded quiz, update per-topic performance |

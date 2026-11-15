@@ -33,6 +33,30 @@ class SubjectOut(BaseModel):
     minutes_per_day: int | None = None
 
 
+class ProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    quiz_length: int
+    show_sources: bool
+
+
+class ProfileUpdate(BaseModel):
+    """Only the fields you send are changed."""
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    quiz_length: int | None = Field(default=None, ge=1, le=20)
+    show_sources: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _strip(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
+
+
 class SubjectUpdate(BaseModel):
     """Only the fields you send are changed; send null to clear one."""
     exam_date: date | None = None

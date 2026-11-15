@@ -118,3 +118,13 @@ class RevisionProgress(Base):
     topic: Mapped[str] = mapped_column(String(200))
     minutes: Mapped[int] = mapped_column(Integer, default=0)
     done_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Profile(Base):
+    """The student using this install (one row, id 1). Offline Scholar is a personal app: no accounts or login."""
+    __tablename__ = "profile"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), default="Student")
+    quiz_length: Mapped[int] = mapped_column(Integer, default=5)
+    show_sources: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
