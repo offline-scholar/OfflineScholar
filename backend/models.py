@@ -62,6 +62,7 @@ class QuizAttempt(Base):
     __tablename__ = "quiz_attempts"
     id: Mapped[int] = mapped_column(primary_key=True)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)  # e.g. the quiz topic (migration 1)
     total: Mapped[int] = mapped_column(Integer)
     correct: Mapped[int] = mapped_column(Integer)
     score: Mapped[float] = mapped_column(Float)  # 0..1
@@ -102,3 +103,15 @@ class RevisionRecommendation(Base):
     priority: Mapped[float] = mapped_column(Float, default=0.0)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RevisionProgress(Base):
+    """A revision-schedule session the student ticked as done (one row per subject, day and topic)."""
+    __tablename__ = "revision_progress"
+    __table_args__ = (UniqueConstraint("subject_id", "day", "topic"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    day: Mapped[int] = mapped_column(Integer)
+    topic: Mapped[str] = mapped_column(String(200))
+    minutes: Mapped[int] = mapped_column(Integer, default=0)
+    done_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

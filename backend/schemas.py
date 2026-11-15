@@ -109,7 +109,38 @@ class QuizGenerate(BaseModel):
 
 class QuizSubmit(BaseModel):
     subject_id: int
+    title: str | None = Field(default=None, max_length=200, description="Shown in quiz history, e.g. the topic")
     answers: list[QuizAnswerIn] = Field(min_length=1, max_length=500)
+
+
+class QuizAttemptOut(BaseModel):
+    id: int
+    title: str | None
+    created_at: datetime
+    total: int
+    correct: int
+    score: float
+    topics: list[str]
+
+
+class ProgressSession(BaseModel):
+    day: int = Field(ge=1, le=366)
+    topic: str = Field(min_length=1, max_length=200)
+    minutes: int = Field(default=0, ge=0, le=24 * 60)
+
+
+class ProgressUpdate(ProgressSession):
+    done: bool = True
+
+
+class ProgressSessionOut(ProgressSession):
+    done_at: datetime
+
+
+class ProgressOut(BaseModel):
+    subject_id: int
+    sessions: list[ProgressSessionOut]
+    minutes_by_topic: dict[str, int]
 
 
 class TopicStat(BaseModel):

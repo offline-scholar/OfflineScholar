@@ -15,7 +15,7 @@ from backend import integration
 from backend.config import Settings, get_settings
 from backend.database import configure_database, session_scope
 from backend.errors import register_error_handlers
-from backend.routes import analysis, chat, documents, health, quiz, subjects
+from backend.routes import analysis, chat, documents, health, progress, quiz, subjects
 from backend.storage import remove_orphan_uploads
 
 log = logging.getLogger("offline_scholar")
@@ -55,7 +55,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     register_error_handlers(app)
 
     api = APIRouter(prefix="/api")
-    for module in (documents, subjects, chat, quiz, analysis, health):
+    for module in (documents, subjects, chat, quiz, analysis, progress, health):
         api.include_router(module.router)
     app.include_router(api)
 

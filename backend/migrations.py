@@ -49,7 +49,8 @@ def add_column(conn: Connection, table: str, column: str, ddl: str) -> None:
 # ---------------------------------------------------------------------------- the migrations
 
 MIGRATIONS: list[Migration] = [
-    # Migration(1, "example: add documents.language", lambda c: add_column(c, "documents", "language", "VARCHAR(20)")),
+    Migration(1, "quiz_attempts.title (quiz history shows the topic)",
+              lambda c: add_column(c, "quiz_attempts", "title", "VARCHAR(200)")),
 ]
 
 

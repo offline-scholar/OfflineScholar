@@ -13,6 +13,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import importlib
+import inspect
 import logging
 import threading
 from collections import OrderedDict
@@ -22,7 +23,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from .errors import AppError
-from .models import Document, QuizAttempt
+from .models import Document, QuizAttempt, RevisionProgress
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +51,9 @@ def data_fingerprint(subject_id: int, db: Session) -> str:
             .filter(Document.subject_id == subject_id).order_by(Document.id).all())
     quizzes = db.query(func.count(QuizAttempt.id), func.max(QuizAttempt.id)).filter(
         QuizAttempt.subject_id == subject_id).one()
-    raw = repr((docs, tuple(quizzes)))
+    progress = db.query(func.count(RevisionProgress.id), func.coalesce(func.sum(RevisionProgress.minutes), 0),
+                        func.max(RevisionProgress.done_at)).filter(RevisionProgress.subject_id == subject_id).one()
+    raw = repr((docs, tuple(quizzes), tuple(progress)))
     return hashlib.sha1(raw.encode()).hexdigest()
 
 
@@ -106,6 +109,20 @@ def _cached(func_name: str, subject_id: int, db: Session) -> Any:
     return cache.get_or_compute(key, lambda: _call(func_name, subject_id, db))
 
 
+def _progress_kwargs(subject_id: int, db: Session) -> dict:
+    """Minutes studied per topic, for exam_engine versions whose recommend_revision accepts `progress`
+    ({"Topic": {"minutes_done": 30}}, the format exam_engine.revision_engine already understands)."""
+    try:
+        fn = importlib.import_module("exam_engine.api").recommend_revision
+        if "progress" not in inspect.signature(fn).parameters:
+            return {}
+    except (ImportError, AttributeError, TypeError, ValueError):
+        return {}
+    from .routes.progress import minutes_by_topic
+
+    return {"progress": {t: {"minutes_done": m} for t, m in minutes_by_topic(db, subject_id).items()}}
+
+
 def get_analysis(subject_id: int, db: Session) -> Any:
     return _cached("analyze_subject", subject_id, db)
 
@@ -117,7 +134,7 @@ def get_revision(subject_id: int, db: Session) -> Any:
     key = ("recommend_revision", subject_id, data_fingerprint(subject_id, db))
     if _saved_revision_key.get(subject_id) != key:
         cache.invalidate(key)
-    result = cache.get_or_compute(key, lambda: _call("recommend_revision", subject_id, db))
+    result = cache.get_or_compute(key, lambda: _call("recommend_revision", subject_id, db, **_progress_kwargs(subject_id, db)))
     _saved_revision_key[subject_id] = key
     return result
 
