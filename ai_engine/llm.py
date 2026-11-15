@@ -1,7 +1,8 @@
 """Local LLM client for Ollama (http://localhost:11434). No cloud APIs."""
 from __future__ import annotations
 
-from typing import Protocol
+import json
+from typing import Iterator, Protocol
 
 import httpx
 
@@ -61,6 +62,39 @@ class OllamaClient:
             raise LLMUnavailableError(f"Ollama returned HTTP {r.status_code}: {r.text[:200]}")
         content = (r.json().get("message") or {}).get("content", "")
         return content.strip()
+
+    def chat_stream(self, system: str, user: str) -> Iterator[str]:
+        """Like chat(), but yields the answer piece by piece as Ollama generates it."""
+        payload = {
+            "model": self.model,
+            "stream": True,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "options": {"temperature": self.temperature, "num_ctx": self.num_ctx, "num_predict": self.max_tokens},
+        }
+        try:
+            with self._http.stream("POST", f"{self.url}/api/chat", json=payload, timeout=self.timeout) as r:
+                if r.status_code == 404:
+                    raise LLMUnavailableError(
+                        f"Model '{self.model}' is not installed. Run `ollama pull {self.model}`.")
+                if r.status_code != 200:
+                    r.read()
+                    raise LLMUnavailableError(f"Ollama returned HTTP {r.status_code}: {r.text[:200]}")
+                for line in r.iter_lines():
+                    if not line:
+                        continue
+                    msg = json.loads(line)
+                    if msg.get("error"):
+                        raise LLMUnavailableError(f"Ollama error: {msg['error']}")
+                    piece = (msg.get("message") or {}).get("content", "")
+                    if piece:
+                        yield piece
+                    if msg.get("done"):
+                        return
+        except httpx.ConnectError as exc:
+            raise LLMUnavailableError(f"Cannot reach Ollama at {self.url}. Start it with `ollama serve`.") from exc
+        except httpx.TimeoutException as exc:
+            raise LLMUnavailableError(
+                f"Ollama did not answer within {self.timeout:.0f}s. A smaller model may help.") from exc
 
     def status(self) -> dict:
         try:

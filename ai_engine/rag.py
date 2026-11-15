@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from typing import Iterator
 
 from .retrieval import RetrievedChunk, retrieve_context
 from .runtime import Services, get_services
@@ -134,6 +135,24 @@ def _is_refusal(text: str) -> bool:
     return bool(_PROSE_REFUSAL.search(first_sentence))
 
 
+def _finish(raw: str, question: str, passages: list[RetrievedChunk], svc: Services) -> Answer:
+    """The checks every answer goes through: abstention, echo removal, citations, support guard."""
+    if _is_refusal(raw):
+        return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=passages[0].score)
+
+    text = _strip_echo(_NOT_FOUND.sub("", raw))
+    if not text:
+        return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=passages[0].score)
+    cited = sorted({int(n) for n in _CITATION.findall(text) if 1 <= int(n) <= len(passages)})
+    used = [passages[n - 1] for n in cited] or passages  # no valid citations -> show everything retrieved
+    support = answer_support(text, question, used)
+    if support < svc.settings.min_answer_support:
+        # The model wrote things its cited passages don't contain: don't present it as grounded.
+        log.info("Answer rejected as unsupported by its passages (support %.2f): %r", support, text[:200])
+        return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=passages[0].score)
+    return Answer(text, grounded=True, sources=[_source(p) for p in used], confidence=passages[0].score)
+
+
 def answer_question(
     question: str,
     subject_id: int | None = None,
@@ -151,19 +170,36 @@ def answer_question(
     passages = retrieve_context(question, subject_id, top_k, services=svc)
     if not passages:
         return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=0.0)
+    return _finish(svc.llm.chat(SYSTEM_PROMPT, build_prompt(question, passages)), question, passages, svc)
 
-    raw = svc.llm.chat(SYSTEM_PROMPT, build_prompt(question, passages))
-    if _is_refusal(raw):
-        return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=passages[0].score)
 
-    text = _strip_echo(_NOT_FOUND.sub("", raw))
-    if not text:
-        return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=passages[0].score)
-    cited = sorted({int(n) for n in _CITATION.findall(text) if 1 <= int(n) <= len(passages)})
-    used = [passages[n - 1] for n in cited] or passages  # no valid citations -> show everything retrieved
-    support = answer_support(text, question, used)
-    if support < svc.settings.min_answer_support:
-        # The model wrote things its cited passages don't contain: don't present it as grounded.
-        log.info("Answer rejected as unsupported by its passages (support %.2f): %r", support, text[:200])
-        return Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=passages[0].score)
-    return Answer(text, grounded=True, sources=[_source(p) for p in used], confidence=passages[0].score)
+def answer_question_stream(
+    question: str,
+    subject_id: int | None = None,
+    top_k: int = 4,
+    services: Services | None = None,
+) -> Iterator[dict]:
+    """answer_question, streamed. Yields events:
+
+    {"type": "token", "text": "..."}  pieces of the model's raw answer as it writes them (show them as they come)
+    {"type": "final", "answer", "grounded", "sources", "confidence"}  the checked result: same checks and same
+        result as answer_question. Replace the streamed text with `answer`: if the support check rejected the
+        answer, `answer` is the "couldn't find this" message and the streamed words must not be shown as an answer.
+
+    No tokens are sent when nothing relevant was retrieved (the LLM isn't called). Raises LLMUnavailableError
+    if Ollama can't be reached before or while generating.
+    """
+    svc = services or get_services()
+    passages = retrieve_context(question, subject_id, top_k, services=svc)
+    if not passages:
+        result = Answer(NOT_FOUND_MESSAGE, grounded=False, sources=[], confidence=0.0)
+    else:
+        prompt = build_prompt(question, passages)
+        stream = getattr(svc.llm, "chat_stream", None)
+        pieces: list[str] = []
+        for piece in (stream(SYSTEM_PROMPT, prompt) if stream else [svc.llm.chat(SYSTEM_PROMPT, prompt)]):
+            pieces.append(piece)
+            yield {"type": "token", "text": piece}
+        result = _finish("".join(pieces).strip(), question, passages, svc)
+    yield {"type": "final", "answer": result.answer, "grounded": result.grounded,
+           "sources": [asdict(src) for src in result.sources], "confidence": result.confidence}
