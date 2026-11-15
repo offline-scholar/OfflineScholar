@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ai_engine.ingest import ensure_index_consistent
 from ai_engine.runtime import Services, build_services, get_services, set_services
+from backend import integration
 from backend.config import Settings, get_settings
 from backend.database import configure_database, session_scope
 from backend.errors import register_error_handlers
@@ -28,6 +29,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         configure_database(settings)
+        integration.cache.clear()  # cached exam-engine results belong to the previous database
         set_services(services or build_services(settings))
         try:
             rebuilt = ensure_index_consistent(get_services())

@@ -13,7 +13,7 @@ Base URL `http://localhost:8000/api` · interactive docs at `/docs` · errors ar
 | `POST /chat/ask` | grounded Q&A (below) |
 | `POST /quiz/generate` | `{subject_id, topic, n_questions (1-20, default 5)}` → multiple-choice questions written by `exam_engine` from the subject's lecture notes, each with `source` document + page. Uses the local LLM (≈10–20 s per question on CPU), falls back to extractive questions; may return `questions: []` with a note |
 | `POST /quiz/submit` | store a graded quiz, update per-topic performance |
-| `GET /analysis/{subject_id}` · `GET /revision/{subject_id}` | provided by `exam_engine` (501 until installed) |
+| `GET /analysis/{subject_id}` · `GET /revision/{subject_id}` | provided by `exam_engine`. Computed on first request (~7–10 s on a laptop CPU), then cached until the subject changes (a document is added, removed or finishes processing, or a quiz is submitted): ~0.3 s |
 | `GET /health` | database, Ollama, model, embeddings (`available` is false when offline and the model isn't saved locally), OCR status; `status` is `ok` only if database, LLM and embeddings are all usable, else `degraded` |
 
 Error codes: `unsupported_file_type`, `invalid_pdf`, `empty_file`, `file_too_large` (413), `duplicate_document` (409),
