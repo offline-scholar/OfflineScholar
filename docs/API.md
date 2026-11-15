@@ -10,10 +10,16 @@ Base URL `http://localhost:8000/api` · interactive docs at `/docs` · errors ar
 | `GET /documents/{id}` · `GET /documents/{id}/status` | details · processing status (`pending` → `processing` → `ready` \| `failed`, with `error`, `warnings`, `page_count`, `chunk_count`) |
 | `DELETE /documents/{id}` | removes file, chunks and vectors (204) |
 | `GET/POST /subjects` · `DELETE /subjects/{id}` | manage subjects |
+| `PATCH /subjects/{id}` | `{exam_date?: "YYYY-MM-DD" or null, minutes_per_day?: 15–600 or null}`: only fields sent change. Shapes the revision plan: it runs from today to the exam (max 30 days, default 7 without a date) at that daily time (default 90). `/revision` returns these as `plan_settings: {exam_date, days_until_exam, days, minutes_per_day, capped, exam_passed}` |
+| `GET /profile` · `PATCH /profile` | the single local student profile `{name, quiz_length (1–20), show_sources}` (defaults Student, 5, true). PATCH changes only the fields sent; no login: one student per install |
 | `POST /chat/ask` | grounded Q&A (below) |
+| `POST /chat/ask/stream` | same request as `/chat/ask`; response is newline-delimited JSON: `{"type":"token","text"}` lines as the model writes, then one `{"type":"final", answer, grounded, sources, confidence}` (identical checks to `/ask`). Replace the streamed text with `final.answer`: if `grounded` is false the streamed words were not supported by the notes. Errors after the stream starts arrive as `{"type":"error","error":{code,message}}`. Measured on a laptop CPU: first words after ~17 s cold (reading the passages), full answer ~26 s |
 | `POST /quiz/generate` | `{subject_id, topic, n_questions (1-20, default 5)}` → multiple-choice questions written by `exam_engine` from the subject's lecture notes, each with `source` document + page. Uses the local LLM (≈10–20 s per question on CPU), falls back to extractive questions; may return `questions: []` with a note |
-| `POST /quiz/submit` | store a graded quiz, update per-topic performance |
-| `GET /analysis/{subject_id}` · `GET /revision/{subject_id}` | provided by `exam_engine` (501 until installed) |
+| `POST /quiz/submit` | `{subject_id, title?, answers:[{topic, correct, question_ref?}]}` → store a graded quiz, update per-topic performance |
+| `GET /quiz/history?subject_id=[&limit=50]` | saved attempts, newest first: `[{id, title, created_at, total, correct, score, topics}]` |
+| `GET /subjects/{id}/progress` | revision sessions ticked as done: `{subject_id, sessions:[{day, topic, minutes, done_at}], minutes_by_topic}` |
+| `PUT /subjects/{id}/progress` | `{day, topic, minutes, done}` tick (done=true) or untick a schedule session; returns the progress. Ticked minutes refresh `/revision` |
+| `GET /analysis/{subject_id}` · `GET /revision/{subject_id}` | provided by `exam_engine`. Computed on first request (~7–10 s on a laptop CPU), then cached until the subject changes (a document is added, removed or finishes processing, or a quiz is submitted): ~0.3 s |
 | `GET /health` | database, Ollama, model, embeddings (`available` is false when offline and the model isn't saved locally), OCR status; `status` is `ok` only if database, LLM and embeddings are all usable, else `degraded` |
 
 Error codes: `unsupported_file_type`, `invalid_pdf`, `empty_file`, `file_too_large` (413), `duplicate_document` (409),

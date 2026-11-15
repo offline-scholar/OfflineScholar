@@ -4,11 +4,12 @@ from __future__ import annotations
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
+from .migrations import migrate
 from .models import Base
 
 _engine: Engine | None = None
@@ -16,7 +17,7 @@ _SessionLocal: sessionmaker[Session] | None = None
 
 
 def configure_database(settings: Settings) -> Engine:
-    """(Re)create the engine and tables. Called once at app startup."""
+    """(Re)create the engine, create missing tables and apply pending migrations. Called once at app startup."""
     global _engine, _SessionLocal
     settings.ensure_dirs()
     if _engine is not None:
@@ -33,7 +34,9 @@ def configure_database(settings: Settings) -> Engine:
         cur.close()
 
     _SessionLocal = sessionmaker(bind=_engine, expire_on_commit=False)
-    Base.metadata.create_all(_engine)
+    had_tables = bool(inspect(_engine).get_table_names())
+    Base.metadata.create_all(_engine)  # new tables only; changes to existing tables are migrations
+    migrate(_engine, had_tables)
     return _engine
 
 

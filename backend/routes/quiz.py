@@ -7,7 +7,7 @@ from backend import integration
 from backend.database import get_db
 from backend.errors import AppError
 from backend.models import QuizAnswer, QuizAttempt, Subject, TopicPerformance
-from backend.schemas import QuizGenerate, QuizResult, QuizSubmit, TopicStat
+from backend.schemas import QuizAttemptOut, QuizGenerate, QuizResult, QuizSubmit, TopicStat
 
 router = APIRouter(prefix="/quiz", tags=["quiz"])
 
@@ -36,7 +36,8 @@ def submit_quiz(body: QuizSubmit, db: Session = Depends(get_db)):
 
     total = len(body.answers)
     correct = sum(a.correct for a in body.answers)
-    attempt = QuizAttempt(subject_id=body.subject_id, total=total, correct=correct, score=correct / total)
+    attempt = QuizAttempt(subject_id=body.subject_id, title=(body.title or None) and body.title.strip()[:200],
+                          total=total, correct=correct, score=correct / total)
     attempt.answers = [QuizAnswer(topic=a.topic.strip(), question_ref=a.question_ref, correct=a.correct)
                        for a in body.answers]
     db.add(attempt)
@@ -59,3 +60,14 @@ def submit_quiz(body: QuizSubmit, db: Session = Depends(get_db)):
         topics=[TopicStat(topic=t, attempts=p.attempts, correct=p.correct, accuracy=p.correct / p.attempts)
                 for t, p in sorted(touched.items())],
     )
+
+
+@router.get("/history", response_model=list[QuizAttemptOut])
+def quiz_history(subject_id: int, limit: int = 50, db: Session = Depends(get_db)):
+    """Saved quiz attempts for a subject, newest first."""
+    if db.get(Subject, subject_id) is None:
+        raise AppError(404, "subject_not_found", f"Subject {subject_id} not found")
+    attempts = (db.query(QuizAttempt).filter(QuizAttempt.subject_id == subject_id)
+                .order_by(QuizAttempt.id.desc()).limit(max(1, min(limit, 500))).all())
+    return [QuizAttemptOut(id=a.id, title=a.title, created_at=a.created_at, total=a.total, correct=a.correct,
+                           score=a.score, topics=sorted({x.topic for x in a.answers})) for a in attempts]

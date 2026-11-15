@@ -1,7 +1,7 @@
 """Pydantic request/response models (the API contract)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -29,6 +29,38 @@ class SubjectOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     name: str
+    exam_date: date | None = None
+    minutes_per_day: int | None = None
+
+
+class ProfileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    name: str
+    quiz_length: int
+    show_sources: bool
+
+
+class ProfileUpdate(BaseModel):
+    """Only the fields you send are changed."""
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    quiz_length: int | None = Field(default=None, ge=1, le=20)
+    show_sources: bool | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _strip(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v
+
+
+class SubjectUpdate(BaseModel):
+    """Only the fields you send are changed; send null to clear one."""
+    exam_date: date | None = None
+    minutes_per_day: int | None = Field(default=None, ge=15, le=600)
 
 
 class DocumentOut(BaseModel):
@@ -109,7 +141,38 @@ class QuizGenerate(BaseModel):
 
 class QuizSubmit(BaseModel):
     subject_id: int
+    title: str | None = Field(default=None, max_length=200, description="Shown in quiz history, e.g. the topic")
     answers: list[QuizAnswerIn] = Field(min_length=1, max_length=500)
+
+
+class QuizAttemptOut(BaseModel):
+    id: int
+    title: str | None
+    created_at: datetime
+    total: int
+    correct: int
+    score: float
+    topics: list[str]
+
+
+class ProgressSession(BaseModel):
+    day: int = Field(ge=1, le=366)
+    topic: str = Field(min_length=1, max_length=200)
+    minutes: int = Field(default=0, ge=0, le=24 * 60)
+
+
+class ProgressUpdate(ProgressSession):
+    done: bool = True
+
+
+class ProgressSessionOut(ProgressSession):
+    done_at: datetime
+
+
+class ProgressOut(BaseModel):
+    subject_id: int
+    sessions: list[ProgressSessionOut]
+    minutes_by_topic: dict[str, int]
 
 
 class TopicStat(BaseModel):

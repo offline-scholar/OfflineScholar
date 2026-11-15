@@ -1,9 +1,9 @@
 """SQLAlchemy models. This schema is the shared contract with Member 2 (see docs/INTEGRATION.md)."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -20,6 +20,9 @@ class Subject(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(200), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Study-plan settings (migration 2): the revision plan runs from today to the exam at this daily time.
+    exam_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    minutes_per_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     documents: Mapped[list["Document"]] = relationship(back_populates="subject", cascade="all, delete-orphan")
 
@@ -62,6 +65,7 @@ class QuizAttempt(Base):
     __tablename__ = "quiz_attempts"
     id: Mapped[int] = mapped_column(primary_key=True)
     subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)  # e.g. the quiz topic (migration 1)
     total: Mapped[int] = mapped_column(Integer)
     correct: Mapped[int] = mapped_column(Integer)
     score: Mapped[float] = mapped_column(Float)  # 0..1
@@ -102,3 +106,25 @@ class RevisionRecommendation(Base):
     priority: Mapped[float] = mapped_column(Float, default=0.0)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RevisionProgress(Base):
+    """A revision-schedule session the student ticked as done (one row per subject, day and topic)."""
+    __tablename__ = "revision_progress"
+    __table_args__ = (UniqueConstraint("subject_id", "day", "topic"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    subject_id: Mapped[int] = mapped_column(ForeignKey("subjects.id", ondelete="CASCADE"), index=True)
+    day: Mapped[int] = mapped_column(Integer)
+    topic: Mapped[str] = mapped_column(String(200))
+    minutes: Mapped[int] = mapped_column(Integer, default=0)
+    done_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Profile(Base):
+    """The student using this install (one row, id 1). Offline Scholar is a personal app: no accounts or login."""
+    __tablename__ = "profile"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), default="Student")
+    quiz_length: Mapped[int] = mapped_column(Integer, default=5)
+    show_sources: Mapped[bool] = mapped_column(default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -145,7 +145,9 @@ def generate_quiz_for_subject(subject_id: int, topic: str, db, n_questions: int 
     """
     from ai_engine.retrieval import retrieve_context
 
-    hits = [h for h in retrieve_context(topic, subject_id, top_k=top_k) if h.doc_type == "lecture"]
+    # doc_types filters inside retrieval, so past-paper/syllabus passages can't take the top_k places
+    # (filtering afterwards left too little lecture text and often no questions).
+    hits = retrieve_context(topic, subject_id, top_k=top_k, doc_types=("lecture",))
     context = [{"document_id": h.document_id, "document_name": h.document_name,
                 "page_number": h.page_number, "text": h.text} for h in hits]
     engine = bridge.build_engine(use_llm=True)

@@ -191,3 +191,29 @@ re-embedded with ONNX had cosine similarity 1.000000 with the stored vector (lar
 the same query returned the same passages with the same scores. Existing indexes therefore need no rebuild.
 Embedding 120 chunks took 5.6 s including model load on the CPU above. Load failures of either runtime now return
 `503 embedding_model_unavailable` with a fix, and `/api/health` reports `degraded` with the error.
+
+## Re-run on the 15-PDF set after the prompt and ONNX changes (2026-11-16)
+
+`python scripts/benchmark_models.py --models qwen2.5:3b` (31 questions, top_k 4, `OS_MIN_SCORE` 0.25,
+`OS_MIN_ANSWER_SUPPORT` 0.55, embeddings via ONNX Runtime, Windows 11 laptop CPU, one run, temperature 0.1).
+
+| | qwen2.5:3b |
+|---|---|
+| Correct answer (required facts present) | 19/22 (86%) |
+| Cited a right page | 20/22 (91%) |
+| Over-refused a covered question | 1 |
+| Uncovered questions correctly refused | **9/9** (4 without calling the LLM) |
+| Made-up answers to uncovered questions | **0** |
+| Answer latency, median / max (when the LLM is called) | 19.8 s / 29.0 s |
+
+The three misses, read by hand:
+- *Does the perceptron mistake bound depend on the dimension …?* Correct in substance ("does not depend on the
+  dimension d … or the number of training examples n", bound R/γgeom) but graded wrong: it never says "margin".
+- *What are support vectors?* Refused. Retrieval missed the defining page (Lecture 3, p. 3) and returned p. 6 and
+  past-paper pages, the one retrieval miss of this set.
+- *In logistic regression, what is modelled as a linear function of the inputs?* Wrong: it describes θᵀx + θ₀
+  without saying it models the log-odds.
+One correct answer cited the module's review page (FN-120 p. 7, which also states the fact) instead of the lesson page.
+
+Latency is higher than the 6.5 s median above because these passages are full text pages (≈900-character chunks
+× 4) rather than short slides, so the prompt is several times longer. The 3-model comparison was not re-run.

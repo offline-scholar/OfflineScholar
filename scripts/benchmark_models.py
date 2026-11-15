@@ -35,6 +35,7 @@ from ai_engine.ingest import ingest_document  # noqa: E402
 from ai_engine.llm import LLMUnavailableError, OllamaClient  # noqa: E402
 from ai_engine.rag import answer_question  # noqa: E402
 from ai_engine.retrieval import retrieve_context  # noqa: E402
+from ai_engine.embeddings import build_embedder  # noqa: E402
 from ai_engine.runtime import Services, build_services  # noqa: E402
 from backend.config import Settings  # noqa: E402
 from backend.database import configure_database, session_scope  # noqa: E402
@@ -215,7 +216,8 @@ def main() -> None:
     shutil.rmtree(work, ignore_errors=True)
     settings = Settings(data_dir=work, offline=True, _env_file=None)
     configure_database(settings)
-    base = build_services(settings)
+    # The throwaway folder has no models: use the embedding model saved in the app's data/models (ONNX when present).
+    base = build_services(settings, embedder=build_embedder(Settings(offline=True, _env_file=None)))
 
     started = datetime.now().strftime("%Y-%m-%d %H:%M")
     print(f"Ingesting PDFs from {args.pdf_dir} (embedding model: {settings.resolved_embedding_model})")

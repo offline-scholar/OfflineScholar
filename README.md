@@ -95,5 +95,5 @@ needs the real models: start the server and run `python scripts/evaluate.py --pd
 
 ## Limitations
 
-PDF only; no auth (single-user, local); no schema migrations yet; answer quality depends on the small local model;
+PDF only; no auth (single-user, local); answer quality depends on the small local model;
 OCR handles English by default (`OS_OCR_LANGUAGE` + Tesseract language packs for others).

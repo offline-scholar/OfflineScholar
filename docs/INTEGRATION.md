@@ -40,4 +40,4 @@ Inside, use `backend.database.session_scope()` only if you need a separate sessi
 `topic_performance(subject_id, topic, attempts, correct)` — running per-topic totals ·
 `revision_recommendations(subject_id, topic, priority, reason)` — **write your recommendations here**.
 
-Need a new column/table? Add it to `backend/models.py` in a PR and tell Member 1 (tables are created with `create_all`; there are no migrations yet, so delete `data/offline_scholar.db` after schema changes in development).
+Need a new column/table? Add it to `backend/models.py` in a PR and tell Member 1. New tables are created at startup by `create_all`; a change to an existing table (new column, data fix) also needs a numbered migration in `backend/migrations.py`, which upgrades existing databases in place at startup (with a backup copy). No need to delete `data/offline_scholar.db`.
