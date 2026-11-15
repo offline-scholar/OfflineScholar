@@ -92,3 +92,24 @@ def test_page_does_not_end_in_tiny_fragment():
     assert len(chunks) == 1 and chunks[0].text.endswith("= 0.247")
     long = chunk_pages([PageText(1, words * 4)], chunk_size=900, overlap=150)
     assert len(long) > 1 and all(len(c.text) >= 900 * 0.25 for c in long)
+
+
+def test_doc_types_filter_keeps_lecture_passages_that_past_papers_would_crowd_out(client, tmp_path, settings):
+    """Quiz generation needs lecture text; past-paper questions on the same topic used to fill the top k."""
+    from ai_engine.retrieval import retrieve_context
+    from .conftest import make_pdf, upload
+    from .exam_fixtures import LECTURES
+    from .test_exam_engine_api import PAPERS, SYLLABUS
+
+    settings.min_score = 0.0
+    sid = client.post("/api/subjects", json={"name": "ML"}).json()["id"]
+    for name, pages in PAPERS.items():
+        upload(client, make_pdf(tmp_path / name, pages), subject_id=sid, doc_type="past_paper")
+    upload(client, make_pdf(tmp_path / "Syllabus.pdf", SYLLABUS), subject_id=sid, doc_type="syllabus")
+    upload(client, make_pdf(tmp_path / "Notes.pdf", [c["text"] for c in LECTURES]), subject_id=sid, doc_type="lecture")
+
+    mixed = retrieve_context("Neural networks", sid, top_k=8)
+    assert {h.doc_type for h in mixed} > {"lecture"}  # other types take some of the 8 places
+    only = retrieve_context("Neural networks", sid, top_k=8, doc_types=("lecture",))
+    assert len(only) == 8 and {h.doc_type for h in only} == {"lecture"}
+    assert [h.score for h in only] == sorted((h.score for h in only), reverse=True)
